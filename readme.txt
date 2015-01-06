@@ -1,4 +1,4 @@
-=== Prevent Concurrent Logins ===
+=== User Localized Time ===
 Contributors:      fjarrett
 Tags:              admin, localization, users
 Requires at least: 3.0
