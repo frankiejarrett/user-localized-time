@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: User Localized Time
- * Description:
+ * Description: Localize times in the admin for users.
  * Version: 0.1.0
  * Author: Frankie Jarrett
  * Author URI: http://frankiejarrett.com
