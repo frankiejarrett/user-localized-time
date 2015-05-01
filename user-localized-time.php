@@ -149,8 +149,8 @@ add_action( 'edit_user_profile_update', 'ult_save_timezone_string_field' );
  * @return void
  */
 function ult_register_scripts() {
-	wp_register_script( 'ult-jstz', USER_LOCALIZED_TIME_URL . 'js/jstz.min.js', array(), '1.0.5', true );
-	wp_register_script( 'ult-cookie', USER_LOCALIZED_TIME_URL . 'js/cookie.min.js', array( 'ult-jstz' ), USER_LOCALIZED_TIME_VERSION, true );
+	wp_register_script( 'ult-jstz', USER_LOCALIZED_TIME_URL . 'lib/js/jstz.min.js', array(), '1.0.5', true );
+	wp_register_script( 'ult-cookie', USER_LOCALIZED_TIME_URL . 'lib/js/cookie.min.js', array( 'ult-jstz' ), USER_LOCALIZED_TIME_VERSION, true );
 }
 add_action( 'init', 'ult_register_scripts' );
 
