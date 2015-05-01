@@ -111,6 +111,25 @@ add_action( 'personal_options_update', 'ult_save_timezone_string_field' );
 add_action( 'edit_user_profile_update', 'ult_save_timezone_string_field' );
 
 /**
+ * Get the offset in seconds between a timezone and UTC
+ *
+ * @param string $timezone
+ *
+ * @return int
+ */
+function ult_get_timezone_offset( $timezone ) {
+	$utc_tz   = new DateTimeZone( 'UTC' );
+	$other_tz = new DateTimeZone( $timezone );
+
+	$utc_date   = new DateTime( 'now', $utc_tz );
+	$other_date = new DateTime( 'now', $other_tz );
+
+	$offset = $other_tz->getOffset( $other_date ) - $utc_tz->getOffset( $utc_date );
+
+	return (int) $offset;
+}
+
+/**
  * Convert Unix timestamps to/from various locales
  *
  * @param string $from
@@ -199,25 +218,6 @@ function ult_user_has_timezone() {
 	$site_tz = ult_get_site_timezone_string();
 
 	return ( $user_tz && $user_tz !== $site_tz );
-}
-
-/**
- * Get the offset in seconds between a timezone and UTC
- *
- * @param string $timezone
- *
- * @return int
- */
-function ult_get_timezone_offset( $timezone ) {
-	$utc_tz   = new DateTimeZone( 'UTC' );
-	$other_tz = new DateTimeZone( $timezone );
-
-	$utc_date   = new DateTime( 'now', $utc_tz );
-	$other_date = new DateTime( 'now', $other_tz );
-
-	$offset = $other_tz->getOffset( $other_date ) - $utc_tz->getOffset( $utc_date );
-
-	return (int) $offset;
 }
 
 /**
