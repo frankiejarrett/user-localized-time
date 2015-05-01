@@ -3,9 +3,9 @@ Contributors:      fjarrett
 Tags:              admin, localization, users
 Requires at least: 3.0
 Tested up to:      4.1
-Stable tag:        trunk
-License:           GPLv2 or later
-License URI:       http://www.gnu.org/licenses/gpl-2.0.html
+Stable tag:        0.1.0
+License:           GPLv3
+License URI:       http://www.gnu.org/licenses/gpl-3.0.html
 
 Localize times in the admin for users.
 
@@ -17,7 +17,7 @@ Localize times in the admin for users.
 
 == Changelog ==
 
-= 0.1.0 - January 8, 2015 =
+= 0.1.0 - May 1, 2015 =
 
 * Initial release
 
