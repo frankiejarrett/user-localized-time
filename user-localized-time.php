@@ -19,6 +19,131 @@ define( 'USER_LOCALIZED_TIME_URL', plugin_dir_url( __FILE__ ) );
 define( 'USER_LOCALIZED_TIME_LANG_PATH', dirname( USER_LOCALIZED_TIME_PLUGIN ) . '/languages' );
 
 /**
+ * Register custom scripts
+ *
+ * @action init
+ *
+ * @return void
+ */
+function ult_register_scripts() {
+	wp_register_script( 'ult-jstz', USER_LOCALIZED_TIME_URL . 'lib/js/jstz.min.js', array(), '1.0.5', true );
+	wp_register_script( 'ult-cookie', USER_LOCALIZED_TIME_URL . 'lib/js/cookie.min.js', array( 'ult-jstz' ), USER_LOCALIZED_TIME_VERSION, true );
+}
+add_action( 'init', 'ult_register_scripts' );
+
+/**
+ * Enqueue cookie script everywhere
+ *
+ * @action wp_enqueue_scripts
+ * @action admin_enqueue_scripts
+ *
+ * @return void
+ */
+function ult_enqueue_scripts() {
+	wp_enqueue_script( 'ult-jstz' );
+	wp_enqueue_script( 'ult-cookie' );
+
+	/**
+	 * Set the TTL (in hours) for localized time cookies, 24 hours by default
+	 *
+	 * @param WP_User $user
+	 * @param bool    $is_admin
+	 *
+	 * @return int
+	 */
+	$cookie_ttl = apply_filters( 'ult_cookie_ttl', 24, wp_get_current_user(), is_admin() );
+
+	wp_localize_script(
+		'ult-cookie',
+		'ult_cookie',
+		array(
+			'ttl' => absint( $cookie_ttl ),
+		)
+	);
+}
+add_action( 'wp_enqueue_scripts', 'ult_enqueue_scripts' );
+add_action( 'admin_enqueue_scripts', 'ult_enqueue_scripts' );
+
+/**
+ * Display custom user meta field
+ *
+ * @action show_user_profile
+ * @action edit_user_profile
+ *
+ * @param object $user
+ *
+ * @return void
+ */
+function ult_timezone_string_field( $user ) {
+	$timezone = ult_get_user_timezone_string( $user->ID );
+	?>
+	<table class="form-table">
+		<tr>
+			<th>
+				<label for="ult_timezone_string"><?php _e( 'Timezone', 'user-localized-time' ) ?></label>
+			</th>
+			<td>
+				<select id="ult_timezone_string" name="ult_timezone_string" class="form-control">
+					<?php echo wp_timezone_choice( $timezone ) ?>
+				</select>
+			</td>
+		</tr>
+	</table>
+	<?php
+}
+add_action( 'show_user_profile', 'ult_timezone_string_field' );
+add_action( 'edit_user_profile', 'ult_timezone_string_field' );
+
+/**
+ * Save custom user meta field
+ *
+ * @action personal_options_update
+ * @action edit_user_profile_update
+ *
+ * @param int $user_id
+ *
+ * @return void
+ */
+function ult_save_timezone_string_field( $user_id ) {
+	update_user_meta( $user_id, 'ult_timezone_string', sanitize_text_field( $_POST['ult_timezone_string'] ) );
+}
+add_action( 'personal_options_update', 'ult_save_timezone_string_field' );
+add_action( 'edit_user_profile_update', 'ult_save_timezone_string_field' );
+
+/**
+ * Convert Unix timestamps to/from various locales
+ *
+ * @param string $from
+ * @param string $to
+ * @param int    $time
+ * @param string $format (optional)
+ *
+ * @return string
+ */
+function ult_convert_locale( $from, $to, $time, $format = 'U' ) {
+	// Validate Unix timestamp
+	if ( ! is_int( $time ) || $time > PHP_INT_MAX || $time < ~PHP_INT_MAX ) {
+		return;
+	}
+
+	// Calc "from" offset
+	$from = ( 'site' === $from ) ? ult_get_site_timezone_string() : ( ( 'user' === $from ) ? ult_get_user_timezone_string() : 'GMT' );
+	$from = ult_get_timezone_offset( $from );
+
+	// Calc "to" offset
+	$to = ( 'site' === $to ) ? ult_get_site_timezone_string() : ( ( 'user' === $to ) ? ult_get_user_timezone_string() : 'GMT' );
+	$to = ult_get_timezone_offset( $to );
+
+	// Calc GMT time using "from" offset
+	$gmt = $time - $from;
+
+	// Calc final date string using "to" offset
+	$date = date( $format, $gmt + $to );
+
+	return (string) $date;
+}
+
+/**
  * Get timezone string from the session cookie of the current user
  *
  * @param int $user_id (optional)
@@ -94,98 +219,6 @@ function ult_get_timezone_offset( $timezone ) {
 
 	return (int) $offset;
 }
-
-/**
- * Display custom user meta field
- *
- * @action show_user_profile
- * @action edit_user_profile
- *
- * @param object $user
- *
- * @return void
- */
-function ult_timezone_string_field( $user ) {
-	$timezone = ult_get_user_timezone_string( $user->ID );
-	?>
-	<table class="form-table">
-		<tr>
-			<th>
-				<label for="ult_timezone_string"><?php _e( 'Timezone', 'user-localized-time' ) ?></label>
-			</th>
-			<td>
-				<select id="ult_timezone_string" name="ult_timezone_string" class="form-control">
-					<?php echo wp_timezone_choice( $timezone ) ?>
-				</select>
-			</td>
-		</tr>
-	</table>
-	<?php
-}
-add_action( 'show_user_profile', 'ult_timezone_string_field' );
-add_action( 'edit_user_profile', 'ult_timezone_string_field' );
-
-/**
- * Save custom user meta field
- *
- * @action personal_options_update
- * @action edit_user_profile_update
- *
- * @param int $user_id
- *
- * @return void
- */
-function ult_save_timezone_string_field( $user_id ) {
-	update_user_meta( $user_id, 'ult_timezone_string', sanitize_text_field( $_POST['ult_timezone_string'] ) );
-}
-add_action( 'personal_options_update', 'ult_save_timezone_string_field' );
-add_action( 'edit_user_profile_update', 'ult_save_timezone_string_field' );
-
-/**
- * Register custom scripts
- *
- * @action init
- *
- * @return void
- */
-function ult_register_scripts() {
-	wp_register_script( 'ult-jstz', USER_LOCALIZED_TIME_URL . 'lib/js/jstz.min.js', array(), '1.0.5', true );
-	wp_register_script( 'ult-cookie', USER_LOCALIZED_TIME_URL . 'lib/js/cookie.min.js', array( 'ult-jstz' ), USER_LOCALIZED_TIME_VERSION, true );
-}
-add_action( 'init', 'ult_register_scripts' );
-
-/**
- * Enqueue cookie script everywhere
- *
- * @action wp_enqueue_scripts
- * @action admin_enqueue_scripts
- *
- * @return void
- */
-function ult_enqueue_scripts() {
-	wp_enqueue_script( 'ult-jstz' );
-	wp_enqueue_script( 'ult-cookie' );
-
-	/**
-	 * Set the TTL (in hours) for localized time cookies, 24 hours by default
-	 *
-	 * @param WP_User $user
-	 * @param bool    $is_admin
-	 *
-	 * @return int
-	 */
-	$cookie_ttl = apply_filters( 'ult_cookie_ttl', 24, wp_get_current_user(), is_admin() );
-
-	wp_localize_script(
-		'ult-cookie',
-		'ult_cookie',
-		array(
-			'ttl' => absint( $cookie_ttl ),
-		)
-	);
-}
-add_action( 'wp_enqueue_scripts', 'ult_enqueue_scripts' );
-add_action( 'admin_enqueue_scripts', 'ult_enqueue_scripts' );
 
 /**
  * Filter localized dates to prefer the user timezone
@@ -329,36 +362,3 @@ function ult_get_comment_date( $date, $d, $comment ) {
 	return $date;
 }
 add_filter( 'get_comment_date', 'ult_get_comment_date', 10, 3 );
-
-/**
- * Convert Unix timestamps to/from various locales
- *
- * @param string $from
- * @param string $to
- * @param int    $time
- * @param string $format (optional)
- *
- * @return string
- */
-function ult_convert_locale( $from, $to, $time, $format = 'U' ) {
-	// Validate Unix timestamp
-	if ( ! is_int( $time ) || $time > PHP_INT_MAX || $time < ~PHP_INT_MAX ) {
-		return;
-	}
-
-	// Calc "from" offset
-	$from = ( 'site' === $from ) ? ult_get_site_timezone_string() : ( ( 'user' === $from ) ? ult_get_user_timezone_string() : 'GMT' );
-	$from = ult_get_timezone_offset( $from );
-
-	// Calc "to" offset
-	$to = ( 'site' === $to ) ? ult_get_site_timezone_string() : ( ( 'user' === $to ) ? ult_get_user_timezone_string() : 'GMT' );
-	$to = ult_get_timezone_offset( $to );
-
-	// Calc GMT time using "from" offset
-	$gmt = $time - $from;
-
-	// Calc final date string using "to" offset
-	$date = date( $format, $gmt + $to );
-
-	return (string) $date;
-}
