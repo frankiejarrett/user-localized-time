@@ -26,7 +26,7 @@ define( 'USER_LOCALIZED_TIME_LANG_PATH', dirname( USER_LOCALIZED_TIME_PLUGIN ) .
  * @return string|bool
  */
 function ult_get_current_user_timezone_cookie() {
-	return empty( $_COOKIE['ult_timezone'] ) ? false : (string) $_COOKIE['ult_timezone'];
+	return empty( $_COOKIE['ult_timezone_string'] ) ? false : (string) $_COOKIE['ult_timezone_string'];
 }
 
 /**
@@ -45,7 +45,7 @@ function ult_get_user_timezone_string( $user_id = null ) {
 		return $default;
 	}
 
-	$user_tz  = get_the_author_meta( 'ult_timezone_string', $user_id );
+	$user_tz  = get_user_meta( $user_id, 'ult_timezone_string', true );
 	$timezone = empty( $user_tz ) ? $default : $user_tz;
 
 	return (string) $timezone;
@@ -149,14 +149,21 @@ add_action( 'edit_user_profile_update', 'ult_save_timezone_string_field' );
  * @return void
  */
 function ult_register_scripts() {
-	wp_register_script( 'ult-jstz', USER_LOCALIZED_TIME_URL . 'js/jstz.min.js', array(), '1.0.5', false );
-	wp_register_script( 'ult-cookie', USER_LOCALIZED_TIME_URL . 'js/cookie.min.js', array( 'ult-jstz' ), USER_LOCALIZED_TIME_VERSION, false );
-	wp_register_script( 'ult-edit', USER_LOCALIZED_TIME_URL . 'js/edit.js', array( 'jquery' ), USER_LOCALIZED_TIME_VERSION, false );
+	wp_register_script( 'ult-jstz', USER_LOCALIZED_TIME_URL . 'js/jstz.min.js', array(), '1.0.5', true );
+	wp_register_script( 'ult-cookie', USER_LOCALIZED_TIME_URL . 'js/cookie.min.js', array( 'ult-jstz' ), USER_LOCALIZED_TIME_VERSION, true );
+	wp_register_script( 'ult-admin', USER_LOCALIZED_TIME_URL . 'js/admin.js', array( 'jquery' ), USER_LOCALIZED_TIME_VERSION, true );
+	wp_register_script( 'ult-edit-post', USER_LOCALIZED_TIME_URL . 'js/edit-post.js', array( 'jquery' ), USER_LOCALIZED_TIME_VERSION, true );
+	wp_register_script( 'ult-edit-comment', USER_LOCALIZED_TIME_URL . 'js/edit-comment.js', array( 'jquery' ), USER_LOCALIZED_TIME_VERSION, true );
+
+	//echo get_option( 'gmt_offset' );die();
+	//echo get_option( 'timezone_string' );die();
+
+	//echo current_time( 'c' ); die();
 }
 add_action( 'init', 'ult_register_scripts' );
 
 /**
- * Enqueue scripts on the frontend and in the admin
+ * Enqueue cookie script everywhere
  *
  * @action wp_enqueue_scripts
  * @action admin_enqueue_scripts
@@ -188,25 +195,74 @@ function ult_enqueue_scripts() {
 add_action( 'wp_enqueue_scripts', 'ult_enqueue_scripts' );
 add_action( 'admin_enqueue_scripts', 'ult_enqueue_scripts' );
 
+
+
+
+function ult_pre_option_gmt_offset( $value ) {
+	$seconds = ult_get_timezone_offset( ult_get_user_timezone_string() );
+	$hours   = $seconds / 60 / 60;
+	$value   = $hours;
+
+	return $value;
+}
+//add_filter( 'pre_option_gmt_offset', 'ult_pre_option_gmt_offset' );
+
+
+
+function ult_pre_option_timezone_string( $value ) {
+	return ult_get_user_timezone_string();
+}
+//add_filter( 'pre_option_timezone_string', 'ult_pre_option_timezone_string' );
+
+
+
 /**
- * Filter posts results
+ * Filter localized dates to prefer the user timezone
  *
- * @filter the_posts
+ * @filter date_i18n
  *
- * @param array $posts
+ * @param string $j
+ * @param string $req_format
+ * @param int    $i
+ * @param bool   $gmt
  *
- * @return array
+ * @return string
  */
-function ult_the_posts( $posts ) {
-	if ( is_admin() && ult_user_has_timezone() ) {
-		foreach ( $posts as $post ) {
-			$post->post_date = ult_convert_locale( 'site', 'user', strtotime( $post->post_date ), 'Y-m-d H:i:s' );
-		}
+function ult_date_i18n( $j, $req_format, $i, $gmt ) {
+	if ( $gmt || is_admin() || ! ult_user_has_timezone() ) {
+		return $j;
 	}
 
-	return $posts;
+	$j = ult_convert_locale( 'site', 'user', $i, $req_format );
+
+	return $j;
 }
-add_filter( 'the_posts', 'ult_the_posts' );
+//add_filter( 'date_i18n', 'ult_date_i18n', 10, 4 );
+
+/**
+ * Filter post times to prefer the user timezone
+ *
+ * @filter get_post_time
+ *
+ * @param string|int $time
+ * @param string     $d
+ * @param bool       $gmt
+ *
+ * @return string
+ */
+function ult_get_post_time( $time, $d, $gmt ) {
+	if ( $gmt || ! ult_user_has_timezone() ) {
+		return $time;
+	}
+
+	$time = ( 'U' === $d ) ? $time : strtotime( $time );
+	$time = ult_convert_locale( 'site', 'user', $time, $d );
+
+	return $time;
+}
+//add_filter( 'get_post_time', 'ult_get_post_time', 10, 3 );
+
+
 
 /**
  * Enqueue admin-only scripts
@@ -216,63 +272,148 @@ add_filter( 'the_posts', 'ult_the_posts' );
  * @return void
  */
 function ult_admin_enqueue_scripts( $hook ) {
-	$allowed = array( 'post.php', 'comment.php', 'edit.php' );
+	wp_enqueue_script( 'ult-admin' );
 
-	if ( ! in_array( $hook, $allowed ) ) {
-		return;
-	}
-
-	if ( 'comment.php' === $hook && isset( $_GET['c'] ) ) {
-		$comment_id = absint( $_GET['c'] );
-		$comment    = get_comment( $comment_id );
-		$date       = isset( $comment->comment_date ) ? strtotime( $comment->comment_date ) : null;
-		$object     = 'comment';
-	} else {
-		global $post;
-
-		$date   = isset( $post->post_date ) ? strtotime( $post->post_date ) : null;
-		$object = 'post';
-	}
-
-	if ( empty( $date ) ) {
-		return;
-	}
+	$user_meta = get_user_meta( get_current_user_id(), 'ult_timezone_string', true );
+	$source    = ! empty( $user_meta ) ? 'user_meta' : ( isset( $_COOKIE['ult_timezone_string'] ) ? 'cookie' : 'site' );
 
 	$timezone_string = ult_get_user_timezone_string();
+	$timezone_offset = ult_get_timezone_offset( $timezone_string );
 	$timezone_abbr   = ult_get_timezone_abbr_from_string( $timezone_string );
 	$timezone        = str_replace( array( '_', '/' ), array( ' ', ' / ' ), $timezone_string );
-	$offset          = ult_get_timezone_offset( ult_get_user_timezone_string() );
-
-	wp_enqueue_script( 'ult-edit' );
+	$timestamp       = ult_convert_locale( 'gmt', 'user', time(), 'U' );
 
 	wp_localize_script(
-		'ult-edit',
+		'ult-admin',
 		'ult_admin',
 		array(
+			'source'          => esc_js( $source ),
 			'timezone_string' => esc_js( $timezone_string ),
+			'timezone_offset' => intval( $timezone_offset ),
 			'timezone_abbr'   => esc_js( $timezone_abbr ),
 			'timezone'        => esc_js( $timezone ),
-			'offset'          => intval( $offset ),
-			'screen'          => esc_js( $hook ),
-			'date'            => array(
-				'object' => esc_js( $object ),
-				'mm'     => esc_js( ult_convert_locale( 'site', 'user', $date, 'm' ) ),
-				'jj'     => esc_js( ult_convert_locale( 'site', 'user', $date, 'j' ) ),
-				'aa'     => esc_js( ult_convert_locale( 'site', 'user', $date, 'Y' ) ),
-				'hh'     => esc_js( ult_convert_locale( 'site', 'user', $date, 'H' ) ),
-				'mn'     => esc_js( ult_convert_locale( 'site', 'user', $date, 'i' ) ),
-			),
-			'curr'             => array(
-				'mm' => esc_js( ult_convert_locale( 'gmt', 'user', time(), 'm' ) ),
-				'jj' => esc_js( ult_convert_locale( 'gmt', 'user', time(), 'j' ) ),
-				'aa' => esc_js( ult_convert_locale( 'gmt', 'user', time(), 'Y' ) ),
-				'hh' => esc_js( ult_convert_locale( 'gmt', 'user', time(), 'H' ) ),
-				'mn' => esc_js( ult_convert_locale( 'gmt', 'user', time(), 'i' ) ),
+			'cur'             => array(
+				'mm' => esc_js( date( 'm', $timestamp ) ),
+				'jj' => esc_js( date( 'j', $timestamp ) ),
+				'aa' => esc_js( date( 'Y', $timestamp ) ),
+				'hh' => esc_js( date( 'H', $timestamp ) ),
+				'mn' => esc_js( date( 'i', $timestamp ) ),
 			),
 		)
 	);
+
+	if ( 'post.php' === $hook ) {
+		wp_enqueue_script( 'ult-edit-post' );
+
+		global $post;
+
+		$timestamp = strtotime( $post->post_date );
+
+		wp_localize_script(
+			'ult-edit-post',
+			'ult_edit_post',
+			array(
+				'date' => array(
+					'mm' => esc_js( date( 'm', $timestamp ) ),
+					'jj' => esc_js( date( 'j', $timestamp ) ),
+					'aa' => esc_js( date( 'Y', $timestamp ) ),
+					'hh' => esc_js( date( 'H', $timestamp ) ),
+					'mn' => esc_js( date( 'i', $timestamp ) ),
+				),
+			)
+		);
+	}
+
+	if ( 'comment.php' === $hook && isset( $_GET['c'] ) ) {
+		wp_enqueue_script( 'ult-edit-comment' );
+
+		$comment_id = absint( $_GET['c'] );
+		$comment    = get_comment( $comment_id );
+		$timestamp  = strtotime( $comment->comment_date );
+
+		wp_localize_script(
+			'ult-edit-comment',
+			'ult_edit_comment',
+			array(
+				'date' => array(
+					'mm' => esc_js( date( 'm', $timestamp ) ),
+					'jj' => esc_js( date( 'j', $timestamp ) ),
+					'aa' => esc_js( date( 'Y', $timestamp ) ),
+					'hh' => esc_js( date( 'H', $timestamp ) ),
+					'mn' => esc_js( date( 'i', $timestamp ) ),
+				),
+			)
+		);
+	}
 }
-add_action( 'admin_enqueue_scripts', 'ult_admin_enqueue_scripts' );
+//add_action( 'admin_enqueue_scripts', 'ult_admin_enqueue_scripts' );
+
+/**
+ * Modify post object dates to prefer the user locale
+ *
+ * @action the_post
+ *
+ * @param WP_Post $post
+ *
+ * @return void
+ */
+function ult_the_post( $post ) {
+	if ( ! ult_user_has_timezone() ) {
+		return;
+	}
+
+	$post->post_date     = ult_convert_locale( 'site', 'user', strtotime( $post->post_date ), 'Y-m-d H:i:s' );
+	$post->post_modified = ult_convert_locale( 'site', 'user', strtotime( $post->post_modified ), 'Y-m-d H:i:s' );
+}
+//add_action( 'the_post', 'ult_the_post', 99 );
+
+/**
+ * Modify the date during post edit to prefer the user locale
+ *
+ * @filter date_edit_pre
+ *
+ * @param string $date
+ * @param int    $post_id
+ *
+ * @return string
+ */
+function ult_date_edit_pre( $date, $post_id ) {
+	if ( ! ult_user_has_timezone() ) {
+		return $date;
+	}
+
+	$date = ult_convert_locale( 'site', 'user', strtotime( $date ), 'Y-m-d H:i:s' );
+
+	return $date;
+}
+//add_filter( 'date_edit_pre', 'ult_date_edit_pre', 10, 2 );
+
+
+
+
+
+
+
+
+/**
+ * Modify comment object dates to prefer the user locale
+ *
+ * @filter get_comment
+ *
+ * @param WP_Comment $comment
+ *
+ * @return WP_Comment
+ */
+function ult_get_comment( $comment ) {
+	if ( ! ult_user_has_timezone() ) {
+		return $comment;
+	}
+
+	$comment->comment_date = ult_convert_locale( 'site', 'user', strtotime( $comment->comment_date ), 'Y-m-d H:i:s' );
+
+	return $comment;
+}
+//add_filter( 'get_comment', 'ult_get_comment', 99 );
 
 /**
  * Convert Unix timestamps to/from various locales
@@ -323,150 +464,7 @@ function ult_get_timezone_abbr_from_string( $timezone_string ) {
 }
 
 /**
- * Filter localized dates to prefer the user timezone
- *
- * @filter date_i18n
- *
- * @param string $j
- * @param string $req_format
- * @param int    $i
- * @param bool   $gmt
- *
- * @return string
- */
-function ult_date_i18n( $j, $req_format, $i, $gmt ) {
-	if ( $gmt || ! ult_user_has_timezone() ) {
-		return $j;
-	}
-
-	$j = ult_convert_locale( 'site', 'user', $i, $req_format );
-
-	return $j;
-}
-add_filter( 'date_i18n', 'ult_date_i18n', 10, 4 );
-
-/**
- * Filter post times to prefer the user timezone
- *
- * @filter get_post_time
- *
- * @param string|int $time
- * @param string     $d
- * @param bool       $gmt
- *
- * @return string
- */
-function ult_get_post_time( $time, $d, $gmt ) {
-	if ( $gmt || ! ult_user_has_timezone() ) {
-		return $time;
-	}
-
-	$time = ( 'U' === $d ) ? $time : strtotime( $time );
-	$time = ult_convert_locale( 'site', 'user', $time, $d );
-
-	return $time;
-}
-add_filter( 'get_post_time', 'ult_get_post_time', 10, 3 );
-
-/**
- * Filter post dates to prefer the user timezone
- *
- * @filter get_the_date
- *
- * @param string  $the_date
- * @param string  $d
- * @param WP_Post $post
- *
- * @return string
- */
-function ult_get_the_date( $the_date, $d, $post ) {
-	if ( ! ult_user_has_timezone() ) {
-		return $the_date;
-	}
-
-	$d        = empty( $d ) ? get_option( 'date_format' ) : $d;
-	$the_date = strtotime( $post->post_date );
-	$the_date = ult_convert_locale( 'site', 'user', $the_date, $d );
-
-	return $the_date;
-}
-add_filter( 'get_the_date', 'ult_get_the_date', 10, 3 );
-
-/**
- * Filter post modified times to prefer the user timezone
- *
- * @filter get_post_modified_time
- *
- * @param string|int $time
- * @param string     $d
- * @param bool       $gmt
- *
- * @return string
- */
-function ult_get_post_modified_time( $time, $d, $gmt ) {
-	if ( $gmt || ! ult_user_has_timezone() ) {
-		return $time;
-	}
-
-	$time = ( 'U' === $d ) ? $time : strtotime( $time );
-	$time = ult_convert_locale( 'site', 'user', $time, $d );
-
-	return $time;
-}
-add_filter( 'get_post_modified_time', 'ult_get_post_modified_time', 10, 3 );
-
-/**
- * Filter comment times to prefer the user timezone
- *
- * @filter get_comment_time
- *
- * @param string|int $date
- * @param string     $d
- * @param bool       $gmt
- * @param bool       $translate
- * @param WP_Comment $comment
- *
- * @return string
- */
-function ult_get_comment_time( $date, $d, $gmt, $translate, $comment ) {
-	if ( $gmt || ! ult_user_has_timezone() ) {
-		return $date;
-	}
-
-	$d    = empty( $d ) ? get_option( 'time_format' ) : $d;
-	$date = strtotime( $comment->comment_date_gmt );
-	$date = ult_convert_locale( 'gmt', 'user', $date, $d );
-
-	return $date;
-}
-add_filter( 'get_comment_time', 'ult_get_comment_time', 10, 5 );
-
-/**
- * Filter comment dates to prefer the user timezone
- *
- * @filter get_comment_date
- *
- * @param string|int $date
- * @param string     $d
- * @param WP_Comment $comment_id
- *
- * @return string
- */
-function ult_get_comment_date( $date, $d, $comment ) {
-	if ( ! ult_user_has_timezone() ) {
-		return $date;
-	}
-
-	$d    = empty( $d ) ? get_option( 'date_format' ) : $d;
-	$date = strtotime( $comment->comment_date_gmt );
-	$date = ult_convert_locale( 'gmt', 'user', $date, $d );
-
-	return $date;
-}
-add_filter( 'get_comment_date', 'ult_get_comment_date', 10, 3 );
-
-/**
- * Modify post data to prefer user timezone before saving
+ * Modify post dates to prefer site timezone before saving
  *
  * @filter wp_insert_post_data
  *
@@ -491,10 +489,10 @@ function ult_wp_insert_post_data( $data, $postarr ) {
 
 	return $data;
 }
-add_filter( 'wp_insert_post_data', 'ult_wp_insert_post_data', 10, 2 );
+//add_filter( 'wp_insert_post_data', 'ult_wp_insert_post_data', 10, 2 );
 
 /**
- * Modify comment data during edits to prefer user timezone
+ * Modify comment date after edits to prefer site timezone
  *
  * Unfortunately, WordPress does not have any hooks available
  * for modifying the comment date data before update, so we have
@@ -529,4 +527,4 @@ function ult_edit_comment( $comment_ID ) {
 
 	add_action( 'edit_comment', __FUNCTION__ );
 }
-add_action( 'edit_comment', 'ult_edit_comment' );
+//add_action( 'edit_comment', 'ult_edit_comment' );

@@ -8,5 +8,5 @@ function ultSetCookie( ttl ) {
 	var d = new Date();
 
 	d.setTime( d.getTime() + ( parseInt( ttl, 10 ) * 3600 * 1000 ) );
-	document.cookie = 'ult_timezone=' + jstz.determine().name() + '; expires=' + d.toUTCString() + '; path=/';
+	document.cookie = 'ult_timezone_string=' + jstz.determine().name() + '; expires=' + d.toUTCString() + '; path=/';
 }
