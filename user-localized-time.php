@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: User Localized Time
- * Description: Localize times in the admin to prefer the user's timezone.
+ * Description: Localize dates and times for users on the frontend of your website.
  * Version: 0.1.0
  * Author: Frankie Jarrett
  * Author URI: http://frankiejarrett.com
