@@ -330,7 +330,6 @@ function ult_get_comment_date( $date, $d, $comment ) {
 }
 add_filter( 'get_comment_date', 'ult_get_comment_date', 10, 3 );
 
-
 /**
  * Convert Unix timestamps to/from various locales
  *
