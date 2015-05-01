@@ -7,7 +7,7 @@ Stable tag:        0.1.0
 License:           GPLv3
 License URI:       http://www.gnu.org/licenses/gpl-3.0.html
 
-Localize times in the admin for users.
+Localize dates and times for users on the frontend of your website.
 
 == Description ==
 
