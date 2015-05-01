@@ -1,6 +1,6 @@
 {
 	"preset": "wordpress",
 	"excludeFiles": [
-		"lib/**.min.js"
+		"lib/*.min.js"
 	]
 }
