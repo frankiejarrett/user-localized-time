@@ -3,8 +3,8 @@
 
 Localize times in the admin for users.
 
-**Contributors:** [fjarrett](http://profiles.wordpress.org/fjarrett)  
-**Tags:** [admin](http://wordpress.org/plugins/tags/admin), [localization](http://wordpress.org/plugins/tags/localization), [users](http://wordpress.org/plugins/tags/users)  
+**Contributors:** [fjarrett](https://profiles.wordpress.org/fjarrett)  
+**Tags:** [admin](https://wordpress.org/plugins/tags/admin), [localization](https://wordpress.org/plugins/tags/localization), [users](https://wordpress.org/plugins/tags/users)  
 **Requires at least:** 3.0  
 **Tested up to:** 4.2  
 **Stable tag:** 0.1.0  
